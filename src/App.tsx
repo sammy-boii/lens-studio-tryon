@@ -1,3 +1,4 @@
+// Updated App.tsx — launchData approach
 import { useEffect, useRef, useState } from 'react'
 import {
   bootstrapCameraKit,
