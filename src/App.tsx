@@ -140,10 +140,12 @@ function App() {
 
       // Apply lens — pass data directly, no launchData wrapper
       await session.applyLens(lens, {
-        garment: selectedGarment,
-        ...(processedTextureUrlRef.current && {
-          textureUrl: processedTextureUrlRef.current
-        })
+        launchParams: {
+          garment: selectedGarment,
+          ...(processedTextureUrlRef.current && {
+            textureUrl: processedTextureUrlRef.current
+          })
+        }
       })
 
       await session.play()
@@ -166,14 +168,13 @@ function App() {
     garment: string,
     textureUrl: string | null
   ) => {
-    if (!sessionRef.current || !lensRef.current) {
-      console.log('Session or lens not ready')
-      return
-    }
+    if (!sessionRef.current || !lensRef.current) return
     try {
       await sessionRef.current.applyLens(lensRef.current, {
-        garment,
-        ...(textureUrl && { textureUrl })
+        launchParams: {
+          garment,
+          ...(textureUrl && { textureUrl })
+        }
       })
       console.log('Lens applied — garment:', garment, 'texture:', textureUrl)
     } catch (err) {
