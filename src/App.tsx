@@ -1,10 +1,10 @@
-// Updated App.tsx — launchData approach
 import { useEffect, useRef, useState } from 'react'
 import {
   bootstrapCameraKit,
   createMediaStreamSource,
   Transform2D,
-  type CameraKitSession
+  type CameraKitSession,
+  type Lens
 } from '@snap/camera-kit'
 import './App.css'
 
@@ -59,7 +59,9 @@ function App() {
   const sessionRef = useRef<CameraKitSession | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const cameraKitRef = useRef<CameraKitInstance | null>(null)
+  const lensRef = useRef<Lens | null>(null)
   const mountedRef = useRef(true)
+  const processedTextureUrlRef = useRef<string | null>(null)
 
   const [status, setStatus] = useState<Status>('idle')
   const [processingStatus, setProcessingStatus] =
@@ -134,7 +136,16 @@ function App() {
       await session.setSource(source)
 
       const lens = await cameraKit.lensRepository.loadLens(lensId, lensGroupId)
-      await session.applyLens(lens)
+      lensRef.current = lens
+
+      // Apply lens — pass data directly, no launchData wrapper
+      await session.applyLens(lens, {
+        garment: selectedGarment,
+        ...(processedTextureUrlRef.current && {
+          textureUrl: processedTextureUrlRef.current
+        })
+      })
+
       await session.play()
 
       if (mountedRef.current) setStatus('ready')
@@ -151,23 +162,28 @@ function App() {
     setStatus('idle')
   }
 
-  const pushGarmentType = async (garment: string) => {
+  const applyLensWithData = async (
+    garment: string,
+    textureUrl: string | null
+  ) => {
+    if (!sessionRef.current || !lensRef.current) {
+      console.log('Session or lens not ready')
+      return
+    }
     try {
-      await fetch(`${BACKEND_URL}/latest-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ garment })
+      await sessionRef.current.applyLens(lensRef.current, {
+        garment,
+        ...(textureUrl && { textureUrl })
       })
-      console.log('Garment type pushed:', garment)
+      console.log('Lens applied — garment:', garment, 'texture:', textureUrl)
     } catch (err) {
-      console.error('Failed to push garment type:', err)
+      console.error('Failed to apply lens:', err)
     }
   }
 
   const handleGarmentChange = async (value: string) => {
     setSelectedGarment(value)
-    // Auto-push to backend immediately — lens picks it up on next poll
-    await pushGarmentType(value)
+    await applyLensWithData(value, processedTextureUrlRef.current)
   }
 
   const handleTextureUpload = async (
@@ -178,6 +194,7 @@ function App() {
       setUploadName(null)
       setUploadSize(null)
       setProcessedPreviewUrl(null)
+      processedTextureUrlRef.current = null
       return
     }
 
@@ -207,6 +224,8 @@ function App() {
         throw new Error('Backend did not return a texture URL')
       }
 
+      processedTextureUrlRef.current = data.texture
+
       // Show preview
       const imageResponse = await fetch(data.texture)
       const buffer = await imageResponse.arrayBuffer()
@@ -214,10 +233,11 @@ function App() {
       setProcessedPreviewUrl(URL.createObjectURL(blob))
       setProcessingStatus('ready')
 
-      // Auto-push garment type again so lens resets hasTexture and fetches fresh
-      await pushGarmentType(selectedGarment)
+      // Apply lens with new texture
+      await applyLensWithData(selectedGarment, data.texture)
     } catch (err) {
       setProcessedPreviewUrl(null)
+      processedTextureUrlRef.current = null
       setUploadError(formatError(err))
       setProcessingStatus('error')
     }
@@ -336,7 +356,8 @@ function App() {
             )}
 
             <div className='hint' style={{ marginTop: 8 }}>
-              Lens updates automatically every 2 seconds.
+              Lens updates automatically when you change garment or upload a
+              photo.
             </div>
           </div>
 
