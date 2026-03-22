@@ -228,7 +228,11 @@ function App() {
       processedTextureUrlRef.current = data.texture
 
       // Show preview
-      const imageResponse = await fetch(data.texture)
+      const imageResponse = await fetch(data.texture, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      })
       const buffer = await imageResponse.arrayBuffer()
       const blob = new Blob([buffer], { type: 'image/png' })
       setProcessedPreviewUrl(URL.createObjectURL(blob))
