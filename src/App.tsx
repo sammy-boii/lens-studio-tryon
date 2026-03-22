@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   bootstrapCameraKit,
+  createExtension,
   createMediaStreamSource,
+  Injectable,
+  remoteApiServicesFactory,
   Transform2D,
   type CameraKitSession,
-  type Lens
+  type Lens,
+  type RemoteApiRequest,
+  type RemoteApiService
 } from '@snap/camera-kit'
 import './App.css'
 
@@ -75,6 +80,38 @@ function App() {
   )
   const [selectedGarment, setSelectedGarment] = useState<string>('sweatshirt')
 
+  // Add this ref
+  const textureRef = useRef<{
+    buffer: ArrayBuffer
+    mime: string
+    name: string
+  } | null>(null)
+
+  // Add this function
+  const createRemoteApiService = (): RemoteApiService => ({
+    apiSpecId: import.meta.env.VITE_REMOTE_API_SPEC_ID,
+    getRequestHandler: (request: RemoteApiRequest) => {
+      if (request.endpointId === 'get_image') {
+        return (reply) => {
+          const texture = textureRef.current
+          if (!texture) {
+            reply({
+              status: 'notFound',
+              metadata: {},
+              body: new ArrayBuffer(0)
+            })
+            return
+          }
+          reply({
+            status: 'success',
+            metadata: { 'content-type': texture.mime },
+            body: texture.buffer
+          })
+        }
+      }
+    }
+  })
+
   const cleanup = () => {
     sessionRef.current?.pause()
     sessionRef.current = null
@@ -110,7 +147,17 @@ function App() {
       cleanup()
 
       if (!cameraKitRef.current) {
-        cameraKitRef.current = await bootstrapCameraKit({ apiToken })
+        const remoteApiService = createRemoteApiService()
+        const remoteApiProvider = Injectable(
+          remoteApiServicesFactory.token,
+          [],
+          () => [remoteApiService]
+        )
+        const extension = createExtension().provides(remoteApiProvider)
+        cameraKitRef.current = await bootstrapCameraKit(
+          { apiToken },
+          (container) => container.provides(extension)
+        )
       }
 
       const cameraKit = cameraKitRef.current
@@ -229,11 +276,17 @@ function App() {
 
       // Show preview
       const imageResponse = await fetch(data.texture, {
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
+        headers: { 'ngrok-skip-browser-warning': 'true' }
       })
       const buffer = await imageResponse.arrayBuffer()
+
+      // Store in ref for Remote API to serve to lens
+      textureRef.current = {
+        buffer,
+        mime: 'image/png',
+        name: file.name.replace(/\.[^.]+$/, '.png')
+      }
+
       const blob = new Blob([buffer], { type: 'image/png' })
       setProcessedPreviewUrl(URL.createObjectURL(blob))
       setProcessingStatus('ready')
