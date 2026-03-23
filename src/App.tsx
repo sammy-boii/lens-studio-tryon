@@ -223,15 +223,14 @@ function App() {
           ...(textureUrl && { textureUrl })
         }
       })
-      console.log('Lens applied — garment:', garment, 'texture:', textureUrl)
     } catch (err) {
-      console.error('Failed to apply lens:', err)
+      console.error('Failed:', err)
     }
   }
 
   const handleGarmentChange = async (value: string) => {
     setSelectedGarment(value)
-    await applyLensWithData(value, processedTextureUrlRef.current)
+    await applyLensWithData(value, processedTextureUrlRef.current) // ← make sure this ref exists
   }
 
   const handleTextureUpload = async (
@@ -272,8 +271,6 @@ function App() {
         throw new Error('Backend did not return a texture URL')
       }
 
-      processedTextureUrlRef.current = data.texture
-
       // Show preview
       const imageResponse = await fetch(data.texture, {
         headers: { 'ngrok-skip-browser-warning': 'true' }
@@ -281,6 +278,7 @@ function App() {
       const buffer = await imageResponse.arrayBuffer()
 
       // Store in ref for Remote API to serve to lens
+      processedTextureUrlRef.current = data.texture
       textureRef.current = {
         buffer,
         mime: 'image/png',
